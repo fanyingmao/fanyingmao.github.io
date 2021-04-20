@@ -1,0 +1,736 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search>
+  <entry>
+    <title>node在Typescrip中实现热更新的思路</title>
+    <url>/2021/04/20/node%E5%9C%A8Typescrip%E4%B8%AD%E5%AE%9E%E7%8E%B0%E7%83%AD%E6%9B%B4%E6%96%B0%E7%9A%84%E6%80%9D%E8%B7%AF/</url>
+    <content><![CDATA[<h1 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h1><p>其实 node 热更基本原理都是清除 require 的缓存后，在重新 require。之前也见过别人在 Typescrip 下的热更实现，但是有个缺点：重新 require 后缺失了引用对象的代码提示，造成了不好的开发体验。</p>
+<h1 id="实现记录"><a href="#实现记录" class="headerlink" title="实现记录"></a>实现记录</h1><p>下面是我的实现</p>
+<figure class="highlight ts"><table><tr><td class="code"><pre><span class="line"><span class="keyword">import</span> * <span class="keyword">as</span> fs <span class="keyword">from</span> <span class="string">"fs"</span>;</span><br><span class="line"><span class="keyword">import</span> * <span class="keyword">as</span> Card_role <span class="keyword">from</span> <span class="string">"../data/Card_role.json"</span>;</span><br><span class="line"><span class="keyword">import</span> &#123; LogUtils &#125; <span class="keyword">from</span> <span class="string">"./LogUtils"</span>;</span><br><span class="line"><span class="keyword">import</span> path = <span class="built_in">require</span>(<span class="string">"path"</span>);</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> mLogUtils = <span class="keyword">new</span> LogUtils(__filename);</span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * 这里会将data目录下所有的文件绑定到HotReload上，同时会修改后热更新，但为了代码编写有提示所有还需要import文件，同时typeof到成员变量上</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">export</span> <span class="keyword">class</span> HotReload &#123;</span><br><span class="line">  <span class="comment">// 为了开发效率这里就用一样的名字，还有这是为了代码中有提示才typeof</span></span><br><span class="line">  <span class="keyword">static</span> Card_role: <span class="keyword">typeof</span> Card_role;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">public</span> <span class="keyword">static</span> init() &#123;</span><br><span class="line">    HotReload.watchCleanCache(<span class="string">"../data/"</span>, <span class="function">(<span class="params">fileName: <span class="built_in">string</span>, moudle: <span class="built_in">any</span></span>) =&gt;</span> &#123;</span><br><span class="line">      <span class="keyword">const</span> name = fileName.split(<span class="string">"."</span>)[<span class="number">0</span>];</span><br><span class="line">      HotReload[name] = moudle;</span><br><span class="line">    &#125;);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">private</span> <span class="keyword">static</span> cleanCache(modulePath: <span class="built_in">string</span>) &#123;</span><br><span class="line">    <span class="keyword">delete</span> <span class="built_in">require</span>.cache[modulePath];</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">private</span> <span class="keyword">static</span> watchCleanCache(dir: <span class="built_in">string</span>, cb: <span class="built_in">Function</span>) &#123;</span><br><span class="line">    <span class="keyword">const</span> dirPath = path.join(__dirname, dir);</span><br><span class="line">    fs.readdir(dirPath, <span class="function">(<span class="params">err, files</span>) =&gt;</span> &#123;</span><br><span class="line">      files.forEach(<span class="function">(<span class="params">item</span>) =&gt;</span> &#123;</span><br><span class="line">        <span class="keyword">const</span> moudle = <span class="built_in">require</span>(dirPath + item);</span><br><span class="line">        cb(item, moudle);</span><br><span class="line">        HotReload.watchFile(dirPath, item, cb);</span><br><span class="line">      &#125;);</span><br><span class="line">    &#125;);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">private</span> <span class="keyword">static</span> watchFile(dirPath: <span class="built_in">string</span>, fileName: <span class="built_in">string</span>, cb: <span class="built_in">Function</span>) &#123;</span><br><span class="line">    <span class="keyword">let</span> filePath = dirPath + fileName;</span><br><span class="line">    fs.watchFile(filePath, <span class="function"><span class="keyword">function</span> (<span class="params"></span>) </span>&#123;</span><br><span class="line">      mLogUtils.info(<span class="string">"HotReload :"</span> + fileName);</span><br><span class="line">      HotReload.cleanCache(<span class="built_in">require</span>.resolve(filePath));</span><br><span class="line">      <span class="keyword">const</span> moudle = <span class="built_in">require</span>(filePath);</span><br><span class="line">      cb(fileName, moudle);</span><br><span class="line">    &#125;);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里顺便说下为什么用 watchFile 而不是 watch 方法，因为时间测试中修改文件一次出现 watch 方法回调了 3 次，虽然 3 次没什么影响，但是有节约强迫症改为了 watchFile，watchFile 有个小问题估计是轮询机制导致的就是有点延迟，但是可以接受。</p>
+]]></content>
+      <tags>
+        <tag>热更新 Typescrip</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>为服务器添加定时日志清理</title>
+    <url>/2021/03/29/%E4%B8%BA%E6%9C%8D%E5%8A%A1%E5%99%A8%E6%B7%BB%E5%8A%A0%E5%AE%9A%E6%97%B6%E6%97%A5%E5%BF%97%E6%B8%85%E7%90%86/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>为了快速排查问题，我必加的日志就是接口的入参与返回。但是同事居然把框架自带的入参和结果代码注释了，理由是消耗服务器 io 与磁盘空间。为此我在论坛开贴讨论了，说 io 性能的由于日志很好分文件服务器写入且是顺序写入的，一般电脑顺序写入的速度可以超过 10MB/s，比起 io 性能更该担心的是服务器的磁盘空间，确实同事维护服务器经常要做清理日志的操作。为了降低这种清理工作量，有必要用下 Linux 的计划任务。</p>
+<h2 id="记录"><a href="#记录" class="headerlink" title="记录"></a>记录</h2><p>打开 crontab</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">crontab -e</span><br></pre></td></tr></table></figure>
+
+<p>添加每天删除过期日志，减少磁盘空间占用</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">10 02 * * * find &lt;查找路径&gt; -<span class="built_in">type</span> d -mtime +10|xargs rm -rf</span><br></pre></td></tr></table></figure>
+
+<h2 id="拓展"><a href="#拓展" class="headerlink" title="拓展"></a>拓展</h2><p>其实还可以通过 log4j 来限制日志文件个数，这样就不用定时清理了。</p>
+]]></content>
+      <tags>
+        <tag>linux</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>关于severless的疑问和痛点</title>
+    <url>/2020/09/05/%E5%85%B3%E4%BA%8Eseverless%E7%9A%84%E7%96%91%E9%97%AE%E5%92%8C%E7%97%9B%E7%82%B9/</url>
+    <content><![CDATA[<p>1 、一个接口调用 severless 运行需要将所有函数接口代码加载到内存，运行玩之后就释放，还有对于数据库之类的连接就不是用连接池的方式要不断创建断开，这样运行效率不会比较低吗？</p>
+<p>2 、使用了 severless 无法用之前开发的断点调试方式，也许应该是有办法的断点的，但是之前的开发者没有用断点，都是打日志的形式，这样调试起来效率就比较低了。</p>
+<p>3 、接手的项目日志只有本地调试有打，部署后由于是 severless 无法存日志于本机，项目并没有做日志功能，如果是用户端反馈 bug，则排查起来比较困难。</p>
+<p>4 、接手的项目并没有用主流的 web 框架来开发，而是自己对接口调用进来的像 url，get/post 进行 swich case 或 if 来处理的，这样无法与主流技术保持一致，我想对 koa 之类的框架应该有一些中间件实现对 severless 的支持吧，然后如果后面不想用来，可以比较方便地切换 severless 服务商或者运行在自己的服务器。</p>
+<p>5 、部署不方便，要在 aws 的后台传 apigetway 文件，然后再传函数实现部分的代码，无法沿用我以前的 shell 脚本上传方式，加上 aws 网站太慢了，效率有点低，需要额外学习 aws 的开发文档然后写个 shell 脚本。</p>
+<p>6 、项目中的 apigetway 文件是 swagger 的 yaml 文件，和接口实现部分是分开的，这样开发需要两个文件间跳转查看修改并保持一致，效率有点低，容易出错，我希望吧 swagger 的接口文档写在对应接口实现的注释中，然后转换成 aws 需要的 yaml 文件。</p>
+<p>最后 severless 开发起来不够自由，无法内存长驻，无法使用自建服务器的技术，虽然降低了服务器开发维护的门槛，但是开发与云服务商强相关了，各家serveless的技术实现不统一，资料目前比较少。</p>
+]]></content>
+      <tags>
+        <tag>severless aws</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>利用废旧安卓手机做NAS的尝试</title>
+    <url>/2020/07/31/%E5%88%A9%E7%94%A8%E5%BA%9F%E6%97%A7%E5%AE%89%E5%8D%93%E6%89%8B%E6%9C%BA%E5%81%9ANAS/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>之前买了希捷的移动机械硬盘，但是接口接触不良，导致在高速读写时，硬盘损坏，而且正好有一台只是碎屏的小米 6x，于是就想将这个手机通过 otg 功能做为 NAS 用。这样好处就是：</p>
+<p>1、手机占用空间小，耗电量低。<br>2、降低机械硬盘移动导致的意外损坏。<br>3、废物利用不用去购买一些额外的外设。</p>
+<h2 id="方案"><a href="#方案" class="headerlink" title="方案"></a>方案</h2><p>之前用过 ftp 传输，但是 ftp 的缺点是无法在线浏览文件，使用起来不方便，最后选择了使用 samba 服务来实现，samba 服务支持 mac，windows，安卓，ios 使用，需要注意的是 windows 无法使用默认端口以外的端口，如果安卓需要用这个默认端口，就需要对安卓手机 root。</p>
+<p>samba 服务有两种实现</p>
+<p>一、个比较简单的方案是安装实现 samba 服务的 app，我找到的一个是叫 LAN drive 的 app，这个 app 比自己搭建 samba 服务简单多了，但是缺点是免费版速度被限制为 0.5MB/S，还有就是我未 root 时 mac 也出现连接失败的情况，root 后就可以了。</p>
+<p>二、就是比较折腾的方案，在安卓上装上 linux 环境，然后在 linux 中运行 samba 服务实现，好处就是速度不受软件层面限制，而且自由度高也可以安装一些实现 NAS 功能的开源项目。缺点就是需要对 linux 命令等有一定了解，比较折腾。</p>
+<p>综上，我选择了二方案，同时记录下一些遇到的问题。</p>
+<h2 id="实现"><a href="#实现" class="headerlink" title="实现"></a>实现</h2><p>1、安装 linux 环境<br>先安装 Linux deploy 这个 app，然后先做如下配置，<br>然后点右上角菜单的安装，安装完成后，点配置，配置好就可以启动了，需要看下启动的日志中 ssh 服务是否启动成功，不成功的话一般是 linux 系统没装好，我试了几次翻墙重复安装才成功的。成功后可以 ssh 连接到手机 linux 安装 samba 服务。<br>需要注意下<br>1、镜像大小设为 5000MB。<br>2、启用 ssh。<br>3、将 otg 存储与手机内部存储挂载到 Linux。<br>4、最好在翻墙环境下载 linux 镜像。我出现了几次下载不成功的情况。<br>2、安装 samba 服务<br>安装不同 linux 发行版会有些区别，我用默认的 Debian，出现了 vim 方向键变字母的问题需要先升级下 vim。</p>
+<p>然后通过ssh连接上后进行下面的操作：</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo apt -y update</span><br></pre></td></tr></table></figure>
+
+<p>安装后出现方向键变字母的问题，需要升级下vim</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo apt-get remove vim-common</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo apt-get install vim</span><br></pre></td></tr></table></figure>
+
+<p>然后安装 samba</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo apt -y install samba</span><br></pre></td></tr></table></figure>
+
+<p>添加 samba 用户,需要注意的是这里的用户名需要是 linux 系统的用户名，否则会失败</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">sudo smbpasswd -a root</span><br></pre></td></tr></table></figure>
+
+<p>配置/etc/samba/smb.conf，我的配置是在配置文件最后加上以下内容</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">[nas]</span><br><span class="line">    comment = share all</span><br><span class="line">    path = /mnt</span><br><span class="line">    browseable = yes</span><br><span class="line">    public = yes</span><br><span class="line">    writable = yes</span><br></pre></td></tr></table></figure>
+
+<p>最后启动 samba 服务生效</p>
+<figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">/etc/init.d/smbd restart</span><br></pre></td></tr></table></figure>
+
+<p>然后 mac 的话在 finder 用快捷键 comand+k 输入地址就可以就可以访问手机的存储了。</p>
+<h2 id="使用体验"><a href="#使用体验" class="headerlink" title="使用体验"></a>使用体验</h2><p>由于我的路由器垃圾，只有 2-3MB/s的读写速度，换为手机热点就可以达到 16-18MB/s 的读写速度，都不是很快，但也够。最大的问题是手机存储不足，用otg挂机械硬盘好像供电不足，我买的带充电otg的线也只能挂U盘，很难成功带起机械硬盘，所以总体还是比较鸡肋的。感觉还是用开发板来做会更好。不过都装了Linux了,就可以把手机做服务器或者内网穿透工具了。</p>
+]]></content>
+      <tags>
+        <tag>NAS</tag>
+        <tag>安卓</tag>
+        <tag>samba</tag>
+        <tag>Linux</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>画洛伦兹曲线</title>
+    <url>/2020/05/10/%E7%94%BB%E6%B4%9B%E4%BC%A6%E5%85%B9%E6%9B%B2%E7%BA%BF/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>最近 B 站的宣传片《后浪》又引起了大家对社会贫富差距加大对关注，所以想开发一个小程序来通过基尼系数来大致绘画出洛伦兹曲线来估计自己所在的财富位置。</p>
+<h2 id="算法"><a href="#算法" class="headerlink" title="算法"></a>算法</h2><p>图片示例：<br><img src="https://wiki.mbalib.com/w/images/f/f2/%E6%B4%9B%E4%BC%A6%E5%85%B9%E6%9B%B2%E7%BA%BF.jpg" alt="img"></p>
+<p>画洛伦兹曲线目前常被使用的方法主要有三种(引自百科)：</p>
+<h3 id="几何计算法"><a href="#几何计算法" class="headerlink" title="几何计算法"></a>几何计算法</h3><p><em>即根据分组资料，按几何图形分块近似逼近计算的方法。</em></p>
+<h3 id="间接拟合法"><a href="#间接拟合法" class="headerlink" title="间接拟合法"></a>间接拟合法</h3><p><em>即先拟合求出收入分配的概率密度函数，再根据概率密度函数导出洛伦兹曲线。</em></p>
+<h3 id="曲线拟合法"><a href="#曲线拟合法" class="headerlink" title="曲线拟合法"></a>曲线拟合法</h3><p><em>即选择适当的曲线直接拟合洛伦兹曲线，常用的曲线有二次曲线、指数曲线和幂函数曲线。</em></p>
+<p><em>利用第一种方法不能得到洛伦兹曲线的表达式，只能用来计算基尼系数，但由于在计算分块面积时用直线近似地代替曲线，所估计的基尼系数要小于实际值，尤其在数据点较少时，误差较大。第二种方法由于计算收入分配的概率密度的复杂性，很难提出合适的概率函数。至于第三种方法，即直接用曲线方程去拟合洛伦兹曲线，应该不失为一种较好的方法，但目前主要的问题在于现有常用的曲线并不适用，曲线含义不明确，或拟合误差较大。</em></p>
+<p>由于有效数据只有一个基尼系数，所以我选择曲线拟合法，曲线就用二次曲线,指数曲线,幂函数曲线都做一次吧。</p>
+<p>考虑到函数曲线必经过(0,0)与(1,1)坐标点最终得到洛伦兹曲线公式为</p>
+<p>二次曲线公式</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = a * <span class="built_in">Math</span>.pow(x, <span class="number">2</span>) - (a - <span class="number">1</span>) * x;</span><br></pre></td></tr></table></figure>
+
+<p>指数曲线公式</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = （<span class="built_in">Math</span>.pow(a, x) - <span class="number">1</span>） / a;</span><br></pre></td></tr></table></figure>
+
+<p>幂函数</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = <span class="built_in">Math</span>.pow(x, a);</span><br></pre></td></tr></table></figure>
+
+<h3 id="論文參考"><a href="#論文參考" class="headerlink" title="論文參考"></a>論文參考</h3><p>在接近 0，1 时，感觉效果不理想。<br>想用简单采用直线与圆弧结合来画，但是這個算多段函數組合，不好計算，</p>
+<p>最好參考了兩篇論文。</p>
+<p>這篇是中科大的人 13 年寫的，他對我國基尼係數估計居然有 0.76 這麽高<br><a href="https://pdfs.semanticscholar.org/aef0/c2d36fb11588577f2982aee84e9610b33143.pdf">Estimating Gini Coefficient Based on Hurun Report and<br>Poverty Line</a></p>
+<p>對論文中的方程簡化后得</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = x - x * <span class="built_in">Math</span>.pow(<span class="number">1</span> - x, a);</span><br></pre></td></tr></table></figure>
+
+<p>0-1 積分<br>其中 a&gt;0 且 a&lt;1</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = -(<span class="number">1</span> / <span class="number">2</span> - <span class="number">1</span> - <span class="number">1</span> / (a + <span class="number">2</span>) + <span class="number">1</span> / (a + <span class="number">1</span>));</span><br><span class="line">轉化</span><br><span class="line">a = (<span class="number">-3</span>+<span class="built_in">Math</span>.sqrt(<span class="number">9</span><span class="number">-4</span>*(<span class="number">2</span>- <span class="number">1</span>/(<span class="number">1</span>/<span class="number">2</span> -y))))/<span class="number">2</span></span><br></pre></td></tr></table></figure>
+
+<p>導函數</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = <span class="number">1</span> - <span class="built_in">Math</span>.pow(<span class="number">1</span> - x, a) + (a * x) / <span class="built_in">Math</span>.pow(<span class="number">1</span> - x, <span class="number">1</span> - a);</span><br></pre></td></tr></table></figure>
+
+<p>簡化原因是論文的兩個參數都接近于 1，設為 1 對模型影響不大，且只有一個可變參數比較容易計算。</p>
+<p>第二篇是一個國外的金融統計教授 12 年寫的</p>
+<p><a href="https://pdfs.semanticscholar.org/b58f/fd3ba37cd5d4a81a8e7eb6026e0b3a4d24a5.pdf">Modelling Lorenz curve</a></p>
+<p>論文中的方程為</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = (<span class="built_in">Math</span>.exp(a * x) - <span class="number">1</span>) / (<span class="built_in">Math</span>.exp(a) - <span class="number">1</span>);</span><br></pre></td></tr></table></figure>
+
+<p>0-1 積分</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = (<span class="built_in">Math</span>.exp(a) - <span class="number">1</span>) / (a * (<span class="built_in">Math</span>.exp(a) - <span class="number">1</span>));</span><br></pre></td></tr></table></figure>
+
+<p>導函數</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = (<span class="built_in">Math</span>.exp(a * x) - <span class="number">1</span>) / (<span class="built_in">Math</span>.exp(a) - <span class="number">1</span>);</span><br></pre></td></tr></table></figure>
+
+<p>但这篇图像画出来后我觉得是不合理的。<br>最顶端的财富值与平均值的倍数应该远远大于平均值与最低端的倍数。因为无论多穷都需要有一个最低生存保障，而富人有多富一般人是想象不到的，同时<br>中国15年公布的5等分可支配收入也可以大致看出，高收入与中间收入比值是 2.30，中间收入与低收入比值的2.17，這兩個比值在比下為1.06。<br>中国19年公布的5等分可支配收入也可以大致看出，高收入与中间收入比值是 3.39，中间收入与低收入比值的3.05，這兩個比值在比下為1.11。<br>支持了财富值与平均值的倍数应该大于平均值与最低端的倍数，還可以判粗略斷出中國近幾年貧富分化還在加大。</p>
+<p>所以为了更合理將这个的轉換后可得。</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">y = <span class="number">1</span> - <span class="built_in">Math</span>.log((<span class="number">1</span>-x) * (<span class="built_in">Math</span>.exp(a) - <span class="number">1</span>) + <span class="number">1</span>)/a;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>暫時就用這兩個方程來模擬吧裏面的論文沒看太懂，還有就是很多論文要收費才可以看，或者看不懂。</p>
+<h2 id="开发"><a href="#开发" class="headerlink" title="开发"></a>开发</h2><p>接下来就开始开发画二次曲线与幂函数曲线来拟合洛伦兹曲线的小程序。<br>开发框架选用 taro。<br>包含功能简介：</p>
+<ol>
+<li>输入基尼系数画出洛伦兹曲线,</li>
+<li>拖動坐標軸對應得到百分比的數值，和斜率。</li>
+<li>對數據擬合得到模型，添加中國的五等分收入數據來擬合,可以推算收入水平在全國的百分比。</li>
+<li>程序幫助説明。</li>
+</ol>
+<p><img src="https://pic4.zhimg.com/80/v2-f33e0a949732556e6f3ab6d508fe5203_1440w.jpg" alt="img"></p>
+]]></content>
+      <tags>
+        <tag>算法</tag>
+        <tag>小程序</tag>
+        <tag>react</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>mysql在加了索引两个字段在or的情况下全表扫描的问题处理</title>
+    <url>/2020/04/26/mysql%E5%9C%A8%E5%8A%A0%E4%BA%86%E7%B4%A2%E5%BC%95%E4%B8%A4%E4%B8%AA%E5%AD%97%E6%AE%B5%E5%9C%A8or%E7%9A%84%E6%83%85%E5%86%B5%E4%B8%8B%E5%85%A8%E8%A1%A8%E6%89%AB%E6%8F%8F%E7%9A%84%E9%97%AE%E9%A2%98%E5%A4%84%E7%90%86/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>根据设备号imei和oaid来与渠道对接引流用户或激活，很容易想到imei与oaid加上索引来查找用户。然后很容易想到用这样的sql查询</p>
+<figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> <span class="keyword">count</span>(<span class="number">1</span>) <span class="keyword">FROM</span> t_player_data <span class="keyword">WHERE</span>  imei=&lt;imei&gt; <span class="keyword">OR</span> oaid=&lt;oaid&gt;;</span><br></pre></td></tr></table></figure>
+<p>但是在阿里云的mysql后台中看到这个语句在一些情况下会是慢查询(最慢的在正式服上大约要12秒)，需要查找下原因。</p>
+<h2 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h2><p>表字结构（已过滤其他非关键字段）,可以看到iemi，oaid都加上索引了，iemi是utf8mb4编码这个是历史遗留问题但和现在性能问题关系不大:</p>
+<figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">CREATE</span> <span class="keyword">TABLE</span> <span class="string">`t_player_data`</span> (</span><br><span class="line">  <span class="string">`id`</span> <span class="built_in">int</span>(<span class="number">11</span>) <span class="keyword">NOT</span> <span class="literal">NULL</span> AUTO_INCREMENT <span class="keyword">COMMENT</span> <span class="string">'用户真实id'</span>,</span><br><span class="line">  <span class="string">`imei`</span> <span class="built_in">varchar</span>(<span class="number">255</span>) <span class="built_in">CHARACTER</span> <span class="keyword">SET</span> utf8mb4 <span class="keyword">DEFAULT</span> <span class="string">''</span> <span class="keyword">COMMENT</span> <span class="string">'设备码  --网站用'</span>,</span><br><span class="line">  <span class="string">`oaid`</span> <span class="built_in">varchar</span>(<span class="number">255</span>) <span class="keyword">NOT</span> <span class="literal">NULL</span> <span class="keyword">DEFAULT</span> <span class="string">''</span> <span class="keyword">COMMENT</span> <span class="string">'android10无法获取imei用oaid代替'</span>,</span><br><span class="line">  PRIMARY <span class="keyword">KEY</span> (<span class="string">`id`</span>) <span class="keyword">USING</span> BTREE,</span><br><span class="line">  <span class="keyword">KEY</span> <span class="string">`idx_imei`</span> (<span class="string">`imei`</span>(<span class="number">191</span>)) <span class="keyword">USING</span> BTREE,</span><br><span class="line">  <span class="keyword">KEY</span> <span class="string">`idx_oaid`</span> (<span class="string">`oaid`</span>) <span class="keyword">USING</span> BTREE</span><br><span class="line">) <span class="keyword">ENGINE</span>=<span class="keyword">InnoDB</span> AUTO_INCREMENT=<span class="number">1010638</span> <span class="keyword">DEFAULT</span> <span class="keyword">CHARSET</span>=utf8 ROW_FORMAT=<span class="keyword">COMPACT</span>;</span><br></pre></td></tr></table></figure>
+<p>需要分析sql性能一般是通过执行计划来看的，分析结果中比较关键的是type和row，这里对EXPLAIN的type做下说明：</p>
+<table>
+<thead>
+<tr>
+<th>链接类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>system</td>
+<td>表只有一行，MyISAM引擎。</td>
+</tr>
+<tr>
+<td>const</td>
+<td>常量连接，表最多只有一行匹配，通用用于主键或者唯一索引比较时</td>
+</tr>
+<tr>
+<td>eq_ref</td>
+<td>每次与之前的表合并行都只在该表读取一行，这是除了system，const之外最好的一种，特点是使用=，而且索引的所有部分都参与join且索引是主键或非空唯一键的索引</td>
+</tr>
+<tr>
+<td>ref</td>
+<td>如果每次只匹配少数行，那就是比较好的一种，使用=或&lt;=&gt;，可以是左覆盖索引或非主键或非唯一键</td>
+</tr>
+<tr>
+<td>fulltext</td>
+<td>全文搜索</td>
+</tr>
+<tr>
+<td>ref_or_null</td>
+<td>与ref类似，但包括NULL</td>
+</tr>
+<tr>
+<td>index_merge</td>
+<td>表示出现了索引合并优化(包括交集，并集以及交集之间的并集)，但不包括跨表和全文索引。这个比较复杂，目前的理解是合并单表的范围索引扫描（如果成本估算比普通的range要更优的话）</td>
+</tr>
+<tr>
+<td>unique_subquery</td>
+<td>在in子查询中，就是value in (select…)把形如select unique_key_column的子查询替换。PS：所以不一定in子句中使用子查询就是低效的</td>
+</tr>
+<tr>
+<td>index_subquery</td>
+<td>同上，但把形如”select non_unique_key_column“的子查询替换</td>
+</tr>
+<tr>
+<td>range</td>
+<td>常数值的范围</td>
+</tr>
+<tr>
+<td>index</td>
+<td>索引树扫描。a.当查询是索引覆盖的，即所有数据均可从索引树获取的时候（Extra中有Using Index）；b.以索引顺序从索引中查找数据行的全表扫描（无 Using Index）；c.如果Extra中Using Index与Using Where同时出现的话，则是利用索引查找键值的意思；d.如单独出现，则是用读索引来代替读行，但不用于查找</td>
+</tr>
+<tr>
+<td>all</td>
+<td>全表扫描(full table scan).</td>
+</tr>
+</tbody></table>
+<p>上表至上而下效率越来越低。</p>
+<p>在正式服测试：</p>
+<figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">EXPLAIN</span> <span class="keyword">SELECT</span> *shao <span class="keyword">FROM</span> t_player_data <span class="keyword">WHERE</span> imei=<span class="string">'0'</span> <span class="keyword">OR</span> oaid=<span class="string">'1'</span>; <span class="comment">--type ALL </span></span><br><span class="line"><span class="keyword">EXPLAIN</span> <span class="keyword">SELECT</span> * <span class="keyword">FROM</span> t_player_data <span class="keyword">WHERE</span> imei=<span class="string">'1'</span> <span class="keyword">OR</span> oaid=<span class="string">'0'</span>; <span class="comment">--type ALL</span></span><br><span class="line"><span class="keyword">EXPLAIN</span> <span class="keyword">SELECT</span> * <span class="keyword">FROM</span> t_player_data <span class="keyword">WHERE</span> imei=<span class="string">'0'</span> <span class="keyword">OR</span> oaid=<span class="string">'1'</span>; <span class="comment">--type ALL</span></span><br><span class="line"><span class="keyword">EXPLAIN</span> <span class="keyword">SELECT</span> * <span class="keyword">FROM</span> t_player_data <span class="keyword">WHERE</span> imei=<span class="string">'1'</span> <span class="keyword">OR</span> oaid=<span class="string">'1'</span>; <span class="comment">--type index_merge</span></span><br></pre></td></tr></table></figure>
+
+<p>可以看到执行计划在等于0的时候,就不走索引进行全表扫描了，同时row的条数也等于表条数了。</p>
+<p>但在测试服测试中这4条语句的type就都是 index_merge，怀疑是imei和oaid为0的条数差异导致同样的语句链接类型的不同。<br>通过不断修改条数发现，<strong>row在1000条左右时链接类型会由index_merge 变为ALL 从而效率大幅降低</strong>，这个可能是mysql优化的规则具体原因没有找到。</p>
+<h2 id="解决"><a href="#解决" class="headerlink" title="解决"></a>解决</h2><p>iemi与oaid在客户端获取不到的情况下，客户端都会给服务端传0，导致数据库中由大量这样的数据，然后在激活时又传0的设备码来查询就会出现全表扫描的慢查询。方案就是对传0的特殊处理，不再进入查询。</p>
+]]></content>
+      <tags>
+        <tag>mysql 索引 优化</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>node对ProtoBuf解析进行日志输出的实现</title>
+    <url>/2020/01/11/node%E5%AF%B9ProtoBuf%E8%A7%A3%E6%9E%90%E8%BF%9B%E8%A1%8C%E6%97%A5%E5%BF%97%E8%BE%93%E5%87%BA%E7%9A%84%E5%AE%9E%E7%8E%B0/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>项目开发的痛点之一没有输入输入日志，之前的框架设计没做好客户端输入输出的日志处理，导致服务端如果不断点，就无法知道客户端发了什么和收到什么。难以排查问题，降低了开发效率。现在需要在当前框架修改使其有客户端调用参数与回传的日志。</p>
+<h2 id="方案选择"><a href="#方案选择" class="headerlink" title="方案选择"></a>方案选择</h2><p>为了解决这个问题考虑了4个方案来实现：</p>
+<ol>
+<li><p>在框架调用的公共入口和出口进行数据打印。<br>如果项目是json解析数据的是可以实现的，但当前项目采用了protobuff解析数据，在上层调用无法知道当前的解析对象，所以无法解析出数据。</p>
+</li>
+<li><p>在之前的接口实现功能的地方进行日志打印。<br>实现接口功能时可以解析数据打印，但几百个接口工作量大而且代码复用性差，这是个可行但不好的方案。</p>
+</li>
+<li><p>修改proto解析对象的生成模板代码，对其加入日志输出。<br>可以修改第三方代码来进行日志输出，但这种方案只能做为穷途末路的情况下的最后手段。首先修改第三方代码工作量大，容易出现问题，其次需要自己维护一个第三方的版本分支，以后无法升级第三方，最后增加后续维护接手的工作量。</p>
+</li>
+<li><p>通过高阶函数对proto 解析方法进行重新定义。<br>这个方案修改了proto解析对象的内部方法，可以对所有proto解析进行进行日志输出，这个方案从代码复用性，工作量，可维护性，对第三方库的侵入性来综合考量是当前最好的解决方案。</p>
+</li>
+</ol>
+<p>综合上考虑，选择了第4个解决方案。</p>
+<h2 id="方案实现"><a href="#方案实现" class="headerlink" title="方案实现"></a>方案实现</h2><p>具体实现如参考如下,代码量不多，只有些比较少用到的功能方法,代码为Typescript代码：</p>
+<figure class="highlight ts"><table><tr><td class="code"><pre><span class="line"><span class="keyword">import</span> * <span class="keyword">as</span> pro <span class="keyword">from</span> <span class="string">'../../../../protoFiles/protoCompiled'</span>;</span><br><span class="line"><span class="keyword">import</span> &#123; LogManager &#125; <span class="keyword">from</span> <span class="string">'../log/LogManager'</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">//需要忽略日志的proto</span></span><br><span class="line"><span class="keyword">const</span> ignoreProto = [<span class="string">'heartbeadResult'</span>];</span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * 对proto 的decode 重新定义输出日志</span></span><br><span class="line"><span class="comment"> * @param fn 原函数</span></span><br><span class="line"><span class="comment"> * @param cName proto name</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">funDecodeLog</span>(<span class="params">fn: <span class="built_in">Function</span>, cName: <span class="built_in">string</span></span>): <span class="title">Function</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> (<span class="params">...args: <span class="built_in">any</span>[]</span>) </span>&#123;</span><br><span class="line">        <span class="keyword">let</span> res = fn.apply(<span class="keyword">this</span>, args);</span><br><span class="line">        <span class="keyword">if</span> (!cheakIsItemProto()) &#123;</span><br><span class="line">            <span class="keyword">try</span> &#123;</span><br><span class="line">                LogManager.instance.oninfo(<span class="string">`<span class="subst">$&#123;cName&#125;</span> decode  proto message ---&gt;:<span class="subst">$&#123;<span class="built_in">JSON</span>.stringify(res)&#125;</span>`</span>);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">catch</span> (e) &#123;</span><br><span class="line">                LogManager.instance.ondebug(<span class="string">`<span class="subst">$&#123;cName&#125;</span> decode  proto Err :<span class="subst">$&#123;e.message&#125;</span>`</span>);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> res;</span><br><span class="line">    &#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * 对proto 的encode 重新定义输出日志</span></span><br><span class="line"><span class="comment"> * @param fn 原函数</span></span><br><span class="line"><span class="comment"> * @param cName proto name</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">funEncodeLog</span>(<span class="params">fn: <span class="built_in">Function</span>, cName: <span class="built_in">string</span></span>): <span class="title">Function</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> <span class="function"><span class="keyword">function</span> (<span class="params">...args: <span class="built_in">any</span>[]</span>) </span>&#123;</span><br><span class="line">        <span class="keyword">if</span> (!cheakIsItemProto()) &#123;</span><br><span class="line">            <span class="keyword">try</span> &#123;</span><br><span class="line">                LogManager.instance.oninfo(<span class="string">`<span class="subst">$&#123;cName&#125;</span> encode proto message &lt;---:<span class="subst">$&#123;<span class="built_in">JSON</span>.stringify(args[<span class="number">0</span>])&#125;</span>`</span>);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">catch</span> (e) &#123;</span><br><span class="line">                LogManager.instance.onwarn(<span class="string">`<span class="subst">$&#123;cName&#125;</span> encode  proto Err :<span class="subst">$&#123;e.message&#125;</span>`</span>);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">let</span> res = fn.apply(<span class="keyword">this</span>, args);</span><br><span class="line">        <span class="keyword">return</span> res;</span><br><span class="line">    &#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * 检查是否是子proto</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">cheakIsItemProto</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">    <span class="keyword">let</span> myObj: <span class="built_in">any</span> = &#123;&#125;;</span><br><span class="line">    <span class="built_in">Error</span>.captureStackTrace(myObj);</span><br><span class="line">    <span class="keyword">let</span> str = <span class="built_in">String</span>(myObj.stack);</span><br><span class="line">    <span class="keyword">let</span> arr = str.split(<span class="string">"\n"</span>);</span><br><span class="line">    <span class="keyword">return</span> arr[<span class="number">3</span>].indexOf(<span class="string">'protoCompiled.js'</span>) &gt; <span class="number">0</span>;<span class="comment">//protoCompiled.js prot文件是生成的，根据对应的文件名设置</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * 重定义encode、decode 函数初始化入口</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">export</span> <span class="function"><span class="keyword">function</span> <span class="title">initProtoFun</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">let</span> cName <span class="keyword">in</span> pro) &#123;</span><br><span class="line">        <span class="keyword">if</span> (ignoreProto.includes(cName)) &#123;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (<span class="keyword">typeof</span> pro[cName][<span class="string">'decode'</span>] === <span class="string">'function'</span>) &#123;</span><br><span class="line">            pro[cName][<span class="string">'decode'</span>] = funDecodeLog(pro[cName][<span class="string">'decode'</span>], cName);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (<span class="keyword">typeof</span> pro[cName][<span class="string">'encode'</span>] === <span class="string">'function'</span>) &#123;</span><br><span class="line">            pro[cName][<span class="string">'encode'</span>] = funEncodeLog(pro[cName][<span class="string">'encode'</span>], cName);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>实际上日志输出应该在框架层面封装好，但目前框架已经成形，这种实现从全局来看也并不完美。</p>
+]]></content>
+      <tags>
+        <tag>日志</tag>
+        <tag>ProtoBuf</tag>
+        <tag>高阶函数</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>进制在业务中的运用</title>
+    <url>/2019/12/31/%E8%BF%9B%E5%88%B6%E5%9C%A8%E4%B8%9A%E5%8A%A1%E4%B8%AD%E7%9A%84%E8%BF%90%E7%94%A8/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>之前策划是所有房间共存一个状态，但需求修改需要每个房间单独存一个状态，常规的解决方案是建表</p>
+<ol>
+<li>建表加字段<br>优点：代码结构清晰，业务需要更多状态存储也可以容易扩展<br>缺点：需要建表，登陆需要多读一张表，多耗一些性能。业务扩展需要新建表字段。</li>
+<li>通过进制在用一个数值存储多个房间状态<br>优点：不需要改表结构，性能消耗和之前相当，扩展不需要新建字段<br>缺点：需要对进制足够了解，且业务扩展受限，不能超过单个数的最大值。</li>
+</ol>
+<p>具体用哪个方案需要根据业务场景，和扩展预期来选择，最后我选择了 2 方案通过 25 进制对六个房间数据存储，下面是对进制的公式做个记录</p>
+<h2 id="公式记录"><a href="#公式记录" class="headerlink" title="公式记录"></a>公式记录</h2><h3 id="初始化-n-进制的-ab-值为"><a href="#初始化-n-进制的-ab-值为" class="headerlink" title="初始化 n 进制的 ab 值为"></a>初始化 n 进制的 ab 值为</h3><figure class="highlight js"><table><tr><td class="code"><pre><span class="line">a * <span class="built_in">Math</span>.pow(n, <span class="number">1</span>) + b * <span class="built_in">Math</span>.pow(n, <span class="number">0</span>);</span><br></pre></td></tr></table></figure>
+
+<h3 id="将-n-进制的-p-的第-a-位数换为-c"><a href="#将-n-进制的-p-的第-a-位数换为-c" class="headerlink" title="将 n 进制的 p 的第 a 位数换为 c"></a>将 n 进制的 p 的第 a 位数换为 c</h3><figure class="highlight js"><table><tr><td class="code"><pre><span class="line"><span class="built_in">Math</span>.floor(p / <span class="built_in">Math</span>.pow(<span class="number">25</span>, a)) * <span class="built_in">Math</span>.pow(<span class="number">25</span>, a) +</span><br><span class="line">  (p % <span class="built_in">Math</span>.pow(<span class="number">25</span>, a - <span class="number">1</span>)) +</span><br><span class="line">  c * <span class="built_in">Math</span>.pow(<span class="number">25</span>, a - <span class="number">1</span>);</span><br></pre></td></tr></table></figure>
+
+<h3 id="获取-n-进制-p-的第-a-位"><a href="#获取-n-进制-p-的第-a-位" class="headerlink" title="获取 n 进制 p 的第 a 位"></a>获取 n 进制 p 的第 a 位</h3><figure class="highlight js"><table><tr><td class="code"><pre><span class="line"><span class="built_in">Math</span>.floor((p % <span class="built_in">Math</span>.pow(n, a)) / <span class="built_in">Math</span>.pow(<span class="number">25</span>, a - <span class="number">1</span>));</span><br></pre></td></tr></table></figure>
+
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>最后这个算法太骚了被禁止使用了。接手的人进制了解不够，代码就不好维护。</p>
+]]></content>
+      <tags>
+        <tag>算法</tag>
+        <tag>进制</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>log4j在vscode中控制台无法输出日志的处理</title>
+    <url>/2019/12/11/log4j%E5%9C%A8vscode%E4%B8%AD%E6%8E%A7%E5%88%B6%E5%8F%B0%E6%97%A0%E6%B3%95%E8%BE%93%E5%87%BA%E6%97%A5%E5%BF%97%E7%9A%84%E5%A4%84%E7%90%86/</url>
+    <content><![CDATA[<h1 id="问题"><a href="#问题" class="headerlink" title="问题"></a>问题</h1><p>项目中使用log4j来做日志输出管理，配置如下：</p>
+<figure class="highlight ts"><table><tr><td class="code"><pre><span class="line"><span class="keyword">this</span>.log4js = <span class="built_in">require</span>(<span class="string">'log4js'</span>);</span><br><span class="line"><span class="keyword">this</span>.log4js.configure(&#123;</span><br><span class="line">    appenders: &#123;</span><br><span class="line">        out: &#123; <span class="keyword">type</span>: <span class="string">'stdout'</span> &#125;,<span class="comment">//设置是否在控制台打印日志</span></span><br><span class="line">        ruleConsole: &#123; <span class="keyword">type</span>: <span class="string">'console'</span> &#125;,</span><br><span class="line">        ruleFile: &#123;</span><br><span class="line">            <span class="keyword">type</span>: <span class="string">'dateFile'</span>,</span><br><span class="line">            filename: LogManager.instance.log_filename,</span><br><span class="line">            pattern: <span class="string">'yyyy-MM-dd.log'</span>,</span><br><span class="line">            maxLogSize: <span class="number">1024</span> * <span class="number">1024</span> * <span class="number">1024</span>,</span><br><span class="line">            numBackups: <span class="number">3</span>,</span><br><span class="line">            alwaysIncludePattern: <span class="literal">true</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;,</span><br><span class="line">    categories: &#123;</span><br><span class="line">        <span class="keyword">default</span>: &#123;</span><br><span class="line">            appenders: [<span class="string">'out'</span>, <span class="string">'ruleFile'</span>],</span><br><span class="line">            level: <span class="string">"info"</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+<p>然后出现了用webstrom可以正常输入日志，但vscode无法输出日志的情况。</p>
+<h1 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h1><p>在.vscode/launch.json的启动配置加上   “outputCapture”: “std”, 就可以了。</p>
+<figure class="highlight json"><table><tr><td class="code"><pre><span class="line">&#123;</span><br><span class="line">         <span class="attr">"type"</span>: <span class="string">"node"</span>,</span><br><span class="line">         <span class="attr">"request"</span>: <span class="string">"launch"</span>,</span><br><span class="line">         <span class="attr">"name"</span>: <span class="string">"api_server"</span>,</span><br><span class="line">         <span class="attr">"program"</span>: <span class="string">"$&#123;workspaceFolder&#125;/bin/www"</span>,</span><br><span class="line">         <span class="attr">"preLaunchTask"</span>: <span class="string">"tsc: build - tsconfig.json"</span>,</span><br><span class="line">         <span class="attr">"outputCapture"</span>: <span class="string">"std"</span>,</span><br><span class="line">         <span class="attr">"outFiles"</span>: [</span><br><span class="line">             <span class="string">"$&#123;workspaceFolder&#125;/bin/**/*.js"</span></span><br><span class="line">         ]</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure>
+<p><a href="https://github.com/microsoft/vscode/issues/19750">参考的issues</a></p>
+]]></content>
+      <tags>
+        <tag>日志</tag>
+        <tag>vscode</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>细数linux子系统WSL的坑</title>
+    <url>/2019/12/11/%E7%BB%86%E6%95%B0WSL%E7%9A%84%E5%9D%91/</url>
+    <content><![CDATA[<h1 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h1><p>习惯用mac在类unix系统下开发，目前没配mac被迫用window下开发。用Windows开发效率太低了，无法用需要的命令和写shell脚本，还有一些与linux系统差异导致的坑。为了用上类unix之前尝试过：</p>
+<ul>
+<li>公司申请mac，好像没有回应了，不过配macmini也不够完美，习惯了mac触控板了。</li>
+<li>装黑苹果，没装成功，而且运维说有N卡问题会黑屏，放弃。</li>
+<li>装unbuntu虚拟机，太卡了。还有虚拟机无法启动的情况。</li>
+<li>wsl目前最好的方案，估计是比较新的技术，有一些坑，而且坑的解决方案不好找。</li>
+</ul>
+<h1 id="具体的坑"><a href="#具体的坑" class="headerlink" title="具体的坑"></a>具体的坑</h1><ol>
+<li>ssh和rsync的远程连接异常慢。</li>
+<li>由于是远程连接开发，这种连接有时会出现无法连上的情况，需要重启vscode。</li>
+<li>linux子系统好像与window共享系统时间，linux下 date命令，ntp命令都无法修改系统时间，window修改系统时间linux系统也会变为对应时间。</li>
+<li>毕竟是linux子系统的文件路径，在svn和日志中有一些文件路径会出现无法找到的情况,路径无法跳转，或svn日志无法查看，报错信息:<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">Not available from this working copy: file:&#x2F;&#x2F;&#x2F;home&#x2F;fanyingmao&#x2F;svn&#x2F;trunk&#x2F;src&#x2F;com&#x2F;25qp&#x2F;socket&#x2F;handler&#x2F;roomGuid&#x2F;RoomGuideDealHandler.ts</span><br></pre></td></tr></table></figure></li>
+<li>linux子系统中windows硬盘会被挂载在mnt目录下，反过来linux的文件会放在windows的 “ C:\Users&lt;用户名&gt;\AppData\Local\Packages\CanonicalGroupLimited.Ubuntu18.04onWindows_79rhkp1fndgsc\LocalState\rootfs “ 路径中，但直接对路径中的文件修改linux不会立即同步修改,最后还是重启电脑。还有windows下创建的文件会有权限问题无法直接读写，需要改权限。</li>
+<li>用autossh做内网穿透，有进程还在但穿透连接断开的情况，之前用虚拟机却没出现。</li>
+<li>还发现一些命令工具无法使用如：docker，lsof，nmap。</li>
+</ol>
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>折腾得好累，人生苦短，给我配台 15寸的macbook pro 吧。</p>
+]]></content>
+      <tags>
+        <tag>linux</tag>
+        <tag>WSL</tag>
+        <tag>windows</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>日志输出的两个优化</title>
+    <url>/2019/12/04/%E6%97%A5%E5%BF%97%E8%BE%93%E5%87%BA%E7%9A%84%E4%B8%A4%E4%B8%AA%E4%BC%98%E5%8C%96/</url>
+    <content><![CDATA[<h1 id="问题"><a href="#问题" class="headerlink" title="问题"></a>问题</h1><p>日志是查找bug的重要线索，充分的日志信息可以快速定位问题，提高开发与项目维护效率，但目前的项目中有三种日志没有输出：</p>
+<pre><code>1、通过 sequelize-typescript 对mysql操作报错时，报错的sql语句没有输出。
+2、没有捕获 Promise 的 报错，并对Promise的报错保存日志。
+3、所有的接口调用没有输出入参与出参日志。</code></pre><h1 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h1><p>1、通过调试可以看到 sequelize-typescript 的报错会将报错sql放入Error对象中，只要对其输出就可以了：</p>
+<pre><code><figure class="highlight ts"><table><tr><td class="code"><pre><span class="line"><span class="keyword">try</span>&#123;</span><br><span class="line">    <span class="keyword">await</span> <span class="keyword">this</span>.saveMyData();</span><br><span class="line">&#125;<span class="keyword">catch</span> (e) &#123;</span><br><span class="line">    <span class="keyword">if</span>(e.sql)&#123;</span><br><span class="line">        LogManager.instance.onerror(<span class="string">`Error sql : <span class="subst">$&#123;e.sql&#125;</span>`</span>)</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></code></pre><p>2、没有对 Promise 的 rejection 进行处理就会抛出这个unhandledRejection事件,对其处理就可以了：</p>
+<pre><code><figure class="highlight ts"><table><tr><td class="code"><pre><span class="line">process.on(<span class="string">'unhandledRejection'</span>,<span class="function"><span class="keyword">function</span>(<span class="params">e</span>)</span>&#123;</span><br><span class="line">    LogManager.instance.onerror(<span class="string">"unhandledRejection Error: "</span> + (e.stack || e));</span><br><span class="line">    <span class="keyword">if</span>(e.sql)&#123;</span><br><span class="line">        LogManager.instance.onerror(<span class="string">"unhandledRejection Error sql :"</span> + e.sql);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure></code></pre><p>3、这个是最影响开发效率的，但由于用了protobuff，在现有设计上难以实现输入输出日志。<br>后面实现了，看这篇<br><a href="http://fanyingmao.github.io/2020/01/11/node%E5%AF%B9ProtoBuf%E8%A7%A3%E6%9E%90%E8%BF%9B%E8%A1%8C%E6%97%A5%E5%BF%97%E8%BE%93%E5%87%BA%E7%9A%84%E5%AE%9E%E7%8E%B0/">node对ProtoBuf解析进行日志输出的实现</a></p>
+]]></content>
+      <tags>
+        <tag>日志</tag>
+        <tag>优化</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>服务器日活动模拟测试方案</title>
+    <url>/2019/08/16/%E6%9C%8D%E5%8A%A1%E5%99%A8%E6%97%A5%E6%B4%BB%E5%8A%A8%E6%A8%A1%E6%8B%9F%E6%B5%8B%E8%AF%95%E6%96%B9%E6%A1%88/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>测试人员需要一天测试像每日签到的多日活动.之前采用的方案是将数据库当前的记录提前一天.这个方案有如下缺点:</p>
+<ul>
+<li>修改数据库记录操作繁琐,且当有多条数据记录需要修改时更加繁琐且有可能遗漏.</li>
+<li>对内存中的日期数据判断无法修改.</li>
+<li>对数据库记录提前一天,与真实环境系统时间加一天存在差异,不够接近真实环境测试.</li>
+</ul>
+<h2 id="方案"><a href="#方案" class="headerlink" title="方案"></a>方案</h2><p>所以采用的方案是修改服务器系统时间来进行测试<br>ubuntu 命令<br>修改系统改时间</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">sudo date -s 2019-08-19</span><br></pre></td></tr></table></figure>
+
+<p>测试后需要同步时间,同步当前时间需要安装 ntpdate</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">sudo apt-get install ntpdate -y</span><br></pre></td></tr></table></figure>
+
+<p>同步阿里源时间命令</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">ntpdate ntp1.aliyun.com</span><br></pre></td></tr></table></figure>
+
+<p>进一步优化测试流程，可以做一个管理后台给测试用。我做了一个极简的管理后台（毕竟不是专业前端）<br><a href="https://github.com/fanyingmao/minimalist-admin">minimalist-admin</a></p>
+]]></content>
+      <tags>
+        <tag>测试</tag>
+        <tag>优化</tag>
+        <tag>效率</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>关于条件调试，与日志调试，远程调试</title>
+    <url>/2019/08/09/%E5%85%B3%E4%BA%8E%E6%9D%A1%E4%BB%B6%E8%B0%83%E8%AF%95%EF%BC%8C%E4%B8%8E%E6%97%A5%E5%BF%97%E8%B0%83%E8%AF%95%EF%BC%8C%E8%BF%9C%E7%A8%8B%E8%B0%83%E8%AF%95/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>由于日志输出不够灵活，同时为了查找 bug 多余的日志输降低代码的可读行与污染常规日志输出，所以使用调试是寻找业务 bug 的最有效的方法，针对开发服采用远程调试启动服务测试。</p>
+<h2 id="处理"><a href="#处理" class="headerlink" title="处理"></a>处理</h2><p>为了解决远程调试导 debug 导致影响其他测试人员的情况,找到了日志调试.<br>之前调试有几个痛点<br>1 循环或大量请求中满足条件断点的情况,总要一步步断点–条件断点解决<br>2 断点太长导致客户端连接断开,且影响其他用户操作.–日志断点解决<br>VSCode 使用日志断点中输出变量为 {变量名}</p>
+<h2 id="注意"><a href="#注意" class="headerlink" title="注意"></a>注意</h2><p>远程调试有两个需要注意的点<br>1 本地代码与远程代码不一致。可以通过 rsync 命令进行差异对比。如果发现差异，则与其它开发人员同步代码。<br>2 进行远程调试时，另一开发者远程先接入的情况，会导致后接入的连接超时，需要开发人员协调。<br>3 不建议在远程调试上进阻塞调试，影响测试人员测试。</p>
+<p>tip:差异比较命令 rsync -rcnv ./bin/ ./bin2/_</p>
+]]></content>
+      <tags>
+        <tag>调试</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>通过ssh做内网穿透,替代TeamViewer等远程桌面</title>
+    <url>/2019/07/30/%20%E9%80%9A%E8%BF%87ssh%E5%81%9A%E5%86%85%E7%BD%91%E7%A9%BF%E9%80%8F,%E6%9B%BF%E4%BB%A3TeamViewer%E7%AD%89%E8%BF%9C%E7%A8%8B%E6%A1%8C%E9%9D%A2/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>公司为了安全很多服务放在内网中,导致开发只能在公司网络环境下进行.导致有些问题无法及时处理,其中两个同事的解决方案是 TeamViewer 远程到自己电脑的方式实现,</p>
+<h2 id="方案一"><a href="#方案一" class="headerlink" title="方案一"></a>方案一</h2><p>似这样的远程桌面,利弊是很明显的</p>
+<p>利: 开发环境就是公司主机与工作环境完全一致,环境导致部分服务无法使用或开发环境导致的问题少。<br>弊: 因为远程桌面传输了大量图像界面的数据还有网络延迟导致远程开发卡顿,从而开发体验不如本机开发,还有就是无法分享多人使用.</p>
+<p>最后我选用比较熟悉和简单的ssh内网端口映射至外网的方式,需要自己有云服务器</p>
+<p>最后对svn,git,ssh 等服务采用直接端口映射的方式,这个方式的缺点就是安全性和服务网络端口变化需要做相应配置调整.<br>ssh做好无密码登陆后的主要命令是：</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">ssh -fNR &lt;外网端口&gt;:&lt;内网ip&gt;:&lt;内网端口&gt; root@&lt;外网ip&gt;</span><br></pre></td></tr></table></figure>
+<p>为了连接稳定一般把ssh 换为autossh</p>
+<p>需要注意外网主机sshd配置中GatewayPorts 为true,否则开启的端口只有外网主机可访问,自己的工作机无法访问.</p>
+<p>通过以上方式基本上实现了可以在家办公。</p>
+<h2 id="方案二"><a href="#方案二" class="headerlink" title="方案二"></a>方案二</h2><p>对svn,git,ssh 等映射配置，在服务器多环境复杂时会增加配置的工作量。最后还是换为远程桌面了，不过是用windows自带的远程桌面，通过ssh将3389端口映射出去，相比TeamViewer等更安全，不用注册账号。windows自带的远程桌面似乎也是差异更新画面的，并不怎么卡。</p>
+]]></content>
+      <tags>
+        <tag>ssh 内网穿透 远程桌面</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>记一次联合查询Sql语句优化</title>
+    <url>/2019/07/02/%E8%AE%B0%E4%B8%80%E6%AC%A1%E8%81%94%E5%90%88%E6%9F%A5%E8%AF%A2Sql%E8%AF%AD%E5%8F%A5%E4%BC%98%E5%8C%96/</url>
+    <content><![CDATA[<h2 id="优化前"><a href="#优化前" class="headerlink" title="优化前"></a>优化前</h2><figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> a.id, a.user_name, a.user_code, a.head_url, <span class="keyword">ifnull</span>(b.red_packet_received_amount, <span class="number">0</span>) <span class="keyword">AS</span> red_packet_received_amount,</span><br><span class="line">    a.create_time</span><br><span class="line">    <span class="keyword">FROM</span> (<span class="keyword">select</span> * <span class="keyword">from</span> t_player_data <span class="keyword">WHERE</span> openinstall = <span class="string">'24735'</span> )a</span><br><span class="line">    <span class="keyword">LEFT</span> <span class="keyword">JOIN</span> (<span class="keyword">SELECT</span> user_id, <span class="keyword">SUM</span>(amount) <span class="keyword">AS</span> red_packet_received_amount</span><br><span class="line">    <span class="keyword">FROM</span> t_red_packet_order</span><br><span class="line">    <span class="keyword">WHERE</span> is_received = <span class="number">1</span></span><br><span class="line">    <span class="keyword">GROUP</span> <span class="keyword">BY</span> user_id</span><br><span class="line">) b <span class="keyword">ON</span> b.user_id = a.id;</span><br></pre></td></tr></table></figure>
+
+<p>耗时间 4s</p>
+<h2 id="优化后"><a href="#优化后" class="headerlink" title="优化后"></a>优化后</h2><figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> a.id, a.user_name, a.user_code, a.head_url,<span class="keyword">SUM</span>(<span class="keyword">IF</span>(b.is_received = <span class="number">1</span>, b.amount,<span class="number">0</span>)) <span class="keyword">AS</span> red_packet_received_amount,</span><br><span class="line">        a.create_time</span><br><span class="line">        <span class="keyword">FROM</span> (<span class="keyword">select</span> * <span class="keyword">from</span> t_player_data  <span class="keyword">WHERE</span> openinstall = <span class="string">'24735'</span> )a</span><br><span class="line">            <span class="keyword">LEFT</span> <span class="keyword">JOIN</span> t_red_packet_order b <span class="keyword">ON</span> b.user_id = a.id  <span class="keyword">GROUP</span> <span class="keyword">BY</span> <span class="keyword">id</span>;</span><br></pre></td></tr></table></figure>
+<p>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</p>
+<p>耗时0.11s</p>
+<h2 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h2><h1 id="可以看到虽然查出的结果一样的但时间差距不是一个数量级的-原因就是第一条sql中"><a href="#可以看到虽然查出的结果一样的但时间差距不是一个数量级的-原因就是第一条sql中" class="headerlink" title="可以看到虽然查出的结果一样的但时间差距不是一个数量级的.原因就是第一条sql中"></a>可以看到虽然查出的结果一样的但时间差距不是一个数量级的.原因就是第一条sql中</h1><p>耗时 0.11s</p>
+<h2 id="分析-1"><a href="#分析-1" class="headerlink" title="分析"></a>分析</h2><p>可以看到虽然查出的结果一样的但时间差距不是一个数量级的.原因就是第一条 sql 中</p>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<p>c114d5355af16519045d17f51cf1bd5b2c7277b7</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+<figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> user_id, <span class="keyword">SUM</span>(amount) <span class="keyword">AS</span> red_packet_received_amount <span class="keyword">FROM</span> t_red_packet_order <span class="keyword">WHERE</span> is_received = <span class="number">1</span> <span class="keyword">GROUP</span> <span class="keyword">BY</span> user_id</span><br></pre></td></tr></table></figure>
+
+<p>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD<br>语句会产生很大的临时表,把预计单独执行就耗时3s多,所以通过”select * from t_player_data WHERE openinstall = ‘24735’”产生的id去筛选结果省去了临时表的生成从而提高了效率.<br>=======<br>语句会产生很大的临时表,把预计单独执行就耗时 3s 多,所以通过”select * from t_player_data WHERE openinstall = ‘24735’”产生的 id 去筛选结果省去了临时表的生成从而提高了效率.</p>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<p>c114d5355af16519045d17f51cf1bd5b2c7277b7</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+]]></content>
+      <tags>
+        <tag>sql</tag>
+        <tag>优化</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>为js编写d.ts声明文件，js与ts导出兼容</title>
+    <url>/2019/06/03/%E4%B8%BAjs%E7%BC%96%E5%86%99d-ts%E5%A3%B0%E6%98%8E%E6%96%87%E4%BB%B6%EF%BC%8Cjs%E4%B8%8Ets%E5%AF%BC%E5%87%BA%E5%85%BC%E5%AE%B9/</url>
+    <content><![CDATA[<p><a href="https://github.com/fanyingmao/ym-mongodb-sql">ym-mongodb-sql</a>添加 ts 支持时发现：<br>ts 引用类的方法无法使用，查看变异后的代码发现，ts 引用类转为 js 中会加 default，但 js 引用类却没有，为了兼容二者。js 导出模块需要添加 default 导出。<br>代码处理：</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line"><span class="built_in">module</span>.exports = MongodbSql;</span><br><span class="line"><span class="built_in">module</span>.exports.default = MongodbSql; <span class="comment">//兼容ts写法</span></span><br></pre></td></tr></table></figure>
+]]></content>
+      <tags>
+        <tag>ts</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>当皇上小游戏优化建议</title>
+    <url>/2019/06/02/%E5%BD%93%E7%9A%87%E4%B8%8A%E5%B0%8F%E6%B8%B8%E6%88%8F%E4%BC%98%E5%8C%96%E5%BB%BA%E8%AE%AE/</url>
+    <content><![CDATA[<p>留存少不是没原因的，我也来当下策划。</p>
+<p>1、首次进入游戏加载时间过长，要查下原因。</p>
+<p>2、首页图片模糊，字体图案粗糙，文字碰越出边界，进入时间长了loading就会停下了，体验不好。</p>
+<p>3、角色图片有点单一，好多只是衣服颜色换下，像3、4级就衣服差了一点，5、6级只是头饰换下，玩的都不好区分。。。。</p>
+<p>4、文字图片适配问题，像商店没适配好。</p>
+<p>5、还有看视频加速，和获取抽奖券我这里没生效，离线收益看视频翻倍，也没有翻倍的界面效果。</p>
+<p>6、分享小游戏没有封面图。</p>
+<p>合伙开发项目，果然没有公司的强制力，就做得太粗糙了，还有人撂挑子。。。。。</p>
+]]></content>
+      <tags>
+        <tag>策划</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>数据库的一次入侵</title>
+    <url>/2019/04/05/%E6%95%B0%E6%8D%AE%E5%BA%93%E7%9A%84%E4%B8%80%E6%AC%A1%E5%85%A5%E4%BE%B5/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>一般我都习惯对别人的服务器进行扫描端口看下有没漏洞。上次获取线上数据库权限是因为mongodb没设密码且开放端口。而这次获取到权限是网站的开放者在5个方面存在漏洞，而只要封住其中任何一个漏洞，我都无法获得里面的用户密码。</p>
+<h2 id="安全问题"><a href="#安全问题" class="headerlink" title="安全问题"></a>安全问题</h2><p>1、git服务和官网放一起，导致被我端口扫描扫描到。</p>
+<p>2、代码权限没控制好，新建的一个项目开放了拉取权限（估计是接手的人不熟悉）。</p>
+<p>3、新建项目的代码中的mysql密码（mysql默认限制本地登录，所以我无法连接mysql）居然和git的管理员密码一样，让我可以获取到另外.net项目中的线上的mssql密码。</p>
+<p>4、mssql 没限制本地连接，通过密码就可以连接上了。</p>
+<p>5、数据库的用户密码只单纯做了MD5 加密，对于一些简单的密码可以解到明码。</p>
+<h2 id="后记"><a href="#后记" class="headerlink" title="后记"></a>后记</h2><p>他们原来用.net 开发，用的框架居然是网狐棋牌游戏的框架来做网站，后来换为了thinkPHP，域名指向变了，就找不到了。</p>
+]]></content>
+      <tags>
+        <tag>数据库</tag>
+        <tag>漏洞</tag>
+        <tag>入侵</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>安卓app通信破解思路</title>
+    <url>/2019/03/09/%E5%AE%89%E5%8D%93app%E9%80%9A%E4%BF%A1%E7%A0%B4%E8%A7%A3%E6%80%9D%E8%B7%AF/</url>
+    <content><![CDATA[<h2 id="什么情况需要破解-app-通信"><a href="#什么情况需要破解-app-通信" class="headerlink" title="什么情况需要破解 app 通信"></a>什么情况需要破解 app 通信</h2><p>1、自动模拟用户行为调用接口，比如最近让人很烦的 某强国 app，和一些考勤 app 的签到，或者做 Dos 攻击。</p>
+<p>2、获取 app 的通信内容，窃取信息或者对 app 服务器数据爬取获取用户信息或新闻数据。</p>
+<p>3、找到服务器的权限判定漏洞。后端程序经常会把一些权限判断交给客户端而服务器未做权限判断的漏洞，可以做些越权之举。比如某立方。</p>
+<h2 id="破解方案"><a href="#破解方案" class="headerlink" title="破解方案"></a>破解方案</h2><h3 id="1、抓包"><a href="#1、抓包" class="headerlink" title="1、抓包"></a>1、抓包</h3><p>如果没有用 https 的可以直接抓包，并可以做中间人攻击。 （某立方在这一步，还有鲸鱼宝以前在这一步。</p>
+<p>如果用了 https 则需要在客户端装上证书，就可以查看到 https 的加密内容。 （某我么在这一步</p>
+<p>如果做了额外加密则装了证书也无法看到，需要分析客户端源码找到加密方法和加密密钥。（大部分的新闻 app 和 billli 会做到这一步）</p>
+<p>也有没做额外加密的只做了 md5 校验的，这种情况可以获取数据但无法更改和发起数据请求，同上需要分析客户端源码找到加密方法和加密密钥。（比如某趣）</p>
+<h3 id="2、客户端分析"><a href="#2、客户端分析" class="headerlink" title="2、客户端分析"></a>2、客户端分析</h3><p>1、反编译看源码，加固的情况没试过，一般如果没做混淆就是裸奔，做了混淆也只是加件可以脱的衣服。根据接口参数的关键字去搜索代码分析，找到加密方法和加密 key，如果放在 so 中就是 c，c++的反编译分析了，没试过。</p>
+<p>2、将反编译出来的包加日志或把日志开关打开再打回去做日志分析，没试过，要研究下。</p>
+<p>3、同二如果 app 开发者不谨慎可能会把开发日志放出来，或引用的第三方日志，查看下日志也许可以发现什么。</p>
+<p>4、如果是混合 app 如 react native 则分析 js 文件，没试过。</p>
+<h2 id="拿到通信权限做什么"><a href="#拿到通信权限做什么" class="headerlink" title="拿到通信权限做什么"></a>拿到通信权限做什么</h2><p>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</p>
+<h2 id="拿到通信权限做什么-1"><a href="#拿到通信权限做什么-1" class="headerlink" title="拿到通信权限做什么"></a>拿到通信权限做什么</h2><h1 id="1、如果app的id是自增，则可以采用遍历的获取信息（facebook好像出过这种事故，大部分公司目前也是用id自增的方案），否则可以看有没有用户关系通过爬取关系网获取数据，没试过。"><a href="#1、如果app的id是自增，则可以采用遍历的获取信息（facebook好像出过这种事故，大部分公司目前也是用id自增的方案），否则可以看有没有用户关系通过爬取关系网获取数据，没试过。" class="headerlink" title="1、如果app的id是自增，则可以采用遍历的获取信息（facebook好像出过这种事故，大部分公司目前也是用id自增的方案），否则可以看有没有用户关系通过爬取关系网获取数据，没试过。"></a>1、如果app的id是自增，则可以采用遍历的获取信息（facebook好像出过这种事故，大部分公司目前也是用id自增的方案），否则可以看有没有用户关系通过爬取关系网获取数据，没试过。</h1><p>1、如果 app 的 id 是自增，则可以采用遍历的获取信息（facebook 好像出过这种事故，大部分公司目前也是用 id 自增的方案），否则可以看有没有用户关系通过爬取关系网获取数据，没试过。</p>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<blockquote>
+<p>c114d5355af16519045d17f51cf1bd5b2c7277b7</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+<p>2、对系统权限测试，查找哪个地方权限没控制好。</p>
+<p>3、看下用户登录是否有做验证吗，如果没有或简单的验证码，可以试下字典随机用户破解或单个用户暴破。破解成功后可以用撞库，试用户其它的账号，没试过。</p>
+]]></content>
+      <tags>
+        <tag>安卓</tag>
+        <tag>破解</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>https的原理分析</title>
+    <url>/2018/12/29/https%E7%9A%84%E5%8E%9F%E7%90%86%E5%88%86%E6%9E%90/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>最近要上小游戏必须用wss进行通信，其实就是对应https的加密通信方式，需要购买ssl证书。</p>
+<p>使用https的的作用就是防止中间人对接获信息的读取和篡改。</p>
+<h3 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h3><h3 id="证书流程："><a href="#证书流程：" class="headerlink" title="证书流程："></a>证书流程：</h3><p>第三方权威机构：签发证书加密私钥。</p>
+<p>服务器：生成RSA公钥与私钥，第三方加密后的证书，证书内容包含域名，RSA公钥。</p>
+<p>客户端：浏览器操作系统内置签发证书公钥，随机生成对称加密密钥<strong>K</strong>。</p>
+<p><strong>https所做的就是将客户端生成的密钥K不被中间人窃取与替换地提交给服务器。</strong></p>
+<h3 id="通信流程："><a href="#通信流程：" class="headerlink" title="通信流程："></a>通信流程：</h3><p>1、客户端请求非对称加密RSA公钥，服务器返回权威机构加密后的第三方加密后的公钥。</p>
+<p>2、客户端使用内置第三方公钥解密出RSA公钥，并检查域名是否一致。</p>
+<p>3、一致后随机生成对称加密密钥K,用RSA公钥加密后提交给服务器。</p>
+<p>4、服务器用RSA私钥解密出加密密钥K。</p>
+<p>5、服务器与客户端同过密钥K通信。</p>
+<p>这个流程就可以保证中间人无法对客户端服务器间通信的读取和篡改，例如域名劫持添加广告端现象。</p>
+<h2 id="一句话总结"><a href="#一句话总结" class="headerlink" title="一句话总结"></a>一句话总结</h2><p>https 就是先进行非对称加密交换对称加密的密钥，然后通过对称加密通信。</p>
+]]></content>
+      <tags>
+        <tag>https</tag>
+        <tag>中间人攻击</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>如何在typescript引用 .json 文件</title>
+    <url>/2018/11/15/%E5%A6%82%E4%BD%95%E5%9C%A8typescript%E5%BC%95%E7%94%A8-json-%E6%96%87%E4%BB%B6/</url>
+    <content><![CDATA[<p>如果查找typescript引用 .json 文件大部分给出的答案是：</p>
+<p>1、require 使用时是 a[‘xxx’],这种方式没有提示和代码检查，所以不使用。</p>
+<p>2、typings.d.ts 添加下面这个定义:</p>
+<figure class="highlight ts"><table><tr><td class="code"><pre><span class="line"><span class="keyword">declare</span> <span class="keyword">module</span> "*.json" &#123;</span><br><span class="line"><span class="keyword">const</span> value:<span class="built_in">any</span>;</span><br><span class="line"><span class="keyword">export</span> defaultv alue;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但我转换出的js代码是</p>
+<p>HeroAttribute2.default.xxx ，然后报找不到default 属性。<br>解决方案<br>typings.d.ts定义改为 :</p>
+<figure class="highlight ts"><table><tr><td class="code"><pre><span class="line"><span class="keyword">declare</span> <span class="keyword">module</span> "*.json";</span><br></pre></td></tr></table></figure>
+<p>引用方式改为 “* as”就可以带提示使用了。</p>
+<p><strong>最后以上都是瞎整，TS 2.9  新增加的属性设置就可以了，难怪没什么资料。</strong></p>
+<figure class="highlight"><table><tr><td class="code"><pre><span class="line">"resolveJsonModule": true,</span><br></pre></td></tr></table></figure>
+
+<p>引用:</p>
+<figure class="highlight ts"><table><tr><td class="code"><pre><span class="line"><span class="keyword">import</span> Setting = <span class="built_in">require</span>(<span class="string">'../shared/publicShared/config/Setting.json'</span>);</span><br></pre></td></tr></table></figure>]]></content>
+      <tags>
+        <tag>typescript</tag>
+        <tag>json</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pomelo通过高阶函数实现非侵入式的自定义异常捕获</title>
+    <url>/2018/09/16/pomelo%E9%80%9A%E8%BF%87%E9%AB%98%E9%98%B6%E5%87%BD%E6%95%B0%E5%AE%9E%E7%8E%B0%E9%9D%9E%E4%BE%B5%E5%85%A5%E5%BC%8F%E7%9A%84%E8%87%AA%E5%AE%9A%E4%B9%89%E5%BC%82%E5%B8%B8%E6%8D%95%E8%8E%B7/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>使用的是pomelo框架开发，项目中需要对接口自定义异常捕获处理。</p>
+<h2 id="方案分析"><a href="#方案分析" class="headerlink" title="方案分析"></a>方案分析</h2><p>方案有三个：<br>1、首先想到的是在函数上层调用try catch。但是上层调用是第三方框架中，需要侵入node module改写第三方代码。<br>2、使用装饰器改写函数，但装饰器现在还只是es7提案，现在node还不支持这个语法。<br>3、使用高阶函数在构造函数中对接口方法重新定义函数。</p>
+<h2 id="实现"><a href="#实现" class="headerlink" title="实现"></a>实现</h2><p>综上，我使用了第三种方案，例子如下：</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Test</span> </span>&#123;</span><br><span class="line">  <span class="keyword">constructor</span>()&#123;</span><br><span class="line">    <span class="keyword">let</span> funs = <span class="built_in">Object</span>.getOwnPropertyNames(Test.prototype);</span><br><span class="line">    <span class="function"><span class="keyword">function</span> <span class="title">fluent</span>(<span class="params">fn</span>)</span>&#123;<span class="comment">//高阶函数</span></span><br><span class="line">      <span class="keyword">return</span> <span class="function"><span class="keyword">function</span>(<span class="params">...args</span>)</span>&#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">          fn.apply(<span class="keyword">this</span>,args);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">catch</span> (e) &#123;</span><br><span class="line">          <span class="built_in">console</span>.log(e);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">this</span>;</span><br><span class="line">      &#125;;</span><br><span class="line">    &#125;</span><br><span class="line">    funs.forEach(item =&amp;gt; &#123;</span><br><span class="line">      <span class="keyword">if</span>(item !== <span class="string">'constructor'</span>)&#123;</span><br><span class="line">        <span class="keyword">this</span>[item] = fluent( <span class="keyword">this</span>[item]);<span class="comment">//重新定义函数</span></span><br><span class="line">      &#125;</span><br><span class="line">    &#125;);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  log1()&#123;</span><br><span class="line">    <span class="keyword">throw</span> <span class="string">'log1'</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  log2()&#123;</span><br><span class="line">    <span class="built_in">console</span>.log(<span class="string">'log2'</span>)</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">let</span> test = <span class="keyword">new</span> Test();</span><br><span class="line">test.log1();</span><br><span class="line">test.log2();</span><br></pre></td></tr></table></figure>
+
+<p>输出结果：</p>
+<pre><code class="sh">log1
+log2</code></pre>
+<p>可以看到成功对类中的函数捕获异常。</p>
+]]></content>
+      <tags>
+        <tag>高阶函数</tag>
+        <tag>pomelo</tag>
+        <tag>异常捕获</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>由搬砖引发的思考</title>
+    <url>/2018/06/22/%E7%94%B1%E6%90%AC%E7%A0%96%E5%BC%95%E5%8F%91%E7%9A%84%E6%80%9D%E8%80%83/</url>
+    <content><![CDATA[<p>搬砖的三个实现方案：<br>1、苦力搬砖，大多数人每天都是这样的，维持社会的基本运行；<br>2、开发自动搬砖工具，少数人可以做的，加快社会运行效率；<br>3、开发自动开发搬砖工具的工具，编程语言应该是比较接近这个工具实现了，从另一个角度说人就是这样一个工具，开发不了人工智能，那就用“人工”智能来替代。</p>
+]]></content>
+      <tags>
+        <tag>哲学</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>node 远程调试 failed: address not available 错误处理</title>
+    <url>/2018/06/06/node-%E8%BF%9C%E7%A8%8B%E8%B0%83%E8%AF%95-failed-address-not-available-%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86/</url>
+    <content><![CDATA[<p>项目远程调试是十分必要的，可以对部署在外网的环境中断点查找问题,而不用在本机上测试问题，<br>但调试启动：</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">node --inspect=47.52.92.163:8025 testDebug.js</span><br></pre></td></tr></table></figure>
+
+<p>报错</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">Starting inspector on 47.52.92.163:8025 failed: address not available</span><br></pre></td></tr></table></figure>
+
+<p>测试发现虽然一般都用服务器的公网ip，但这里调试需要用云服务器的<strong>内网ip（私有ip）</strong>——linux下ifconfig命令显示的ip即内网ip，才可以成功运行的.修改后可以成功调试,用0.0.0.0这个ip就可以了。</p>
+<figure class="highlight sh"><table><tr><td class="code"><pre><span class="line">node --inspect=0.0.0.0:8025 testDebug.js</span><br></pre></td></tr></table></figure>
+
+<p>测试代码：</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line"><span class="comment">//testDebug.js</span></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">test</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line"><span class="built_in">console</span>.log(<span class="string">"test === "</span> + <span class="built_in">Date</span>.now());</span><br><span class="line">&#125;</span><br><span class="line">setInterval(test.bind(<span class="keyword">this</span>),<span class="number">1000</span>);</span><br></pre></td></tr></table></figure>]]></content>
+      <tags>
+        <tag>node</tag>
+        <tag>调试</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>mongodb传参数生成sql语句实现</title>
+    <url>/2018/04/19/mongodb%E4%BC%A0%E5%8F%82%E6%95%B0%E7%94%9F%E6%88%90sql%E8%AF%AD%E5%8F%A5%E5%AE%9E%E7%8E%B0/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>项目由node+mongodb开发改为，java+mysql，为了方便迁移，想将mongodb传参数生成mysql对应的sql语句。</p>
+<h2 id="实现"><a href="#实现" class="headerlink" title="实现"></a>实现</h2><p>具体看<a href="https://github.com/fanyingmao/ym-mongodb-sql">github</a></p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">  strChang(obj) &#123;</span><br><span class="line">      <span class="keyword">if</span> (<span class="keyword">typeof</span> obj === <span class="string">'string'</span>) &#123;</span><br><span class="line">          <span class="keyword">return</span> <span class="string">"'"</span> + obj + <span class="string">"'"</span></span><br><span class="line">      &#125;</span><br><span class="line">      <span class="keyword">else</span> &#123;</span><br><span class="line">          <span class="keyword">return</span> obj;</span><br><span class="line">      &#125;</span><br><span class="line">  &#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * 生成sql查询语句</span></span><br><span class="line"><span class="comment"> * @param tableName 表名</span></span><br><span class="line"><span class="comment"> * @param query 相等查询</span></span><br><span class="line"><span class="comment"> * @param fields 字段筛选</span></span><br><span class="line"><span class="comment"> * @param optSql 其它sql语句</span></span><br><span class="line"><span class="comment"> * @returns &#123;*&#125; promise结果返回</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line">find(tableName, query, fields, optSql) &#123;</span><br><span class="line">  <span class="keyword">let</span> fieldsKeys;</span><br><span class="line">  <span class="keyword">if</span> (!fields) &#123;</span><br><span class="line">    fieldsKeys = [];</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">else</span> &#123;</span><br><span class="line">    fieldsKeys = <span class="built_in">Object</span>.keys(fields);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">let</span> fieldSql;</span><br><span class="line">  <span class="keyword">if</span> (fieldsKeys.length === <span class="number">0</span>) &#123;</span><br><span class="line">    fieldSql = <span class="string">'*'</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">else</span> &#123;</span><br><span class="line">    fieldSql = fieldsKeys.join(<span class="string">','</span>);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">let</span> queryKeys = <span class="built_in">Object</span>.keys(query);</span><br><span class="line">  <span class="keyword">let</span> querySql;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">if</span> (queryKeys.length === <span class="number">0</span>) &#123;</span><br><span class="line">    querySql = <span class="string">''</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">else</span> &#123;</span><br><span class="line">    querySql = <span class="string">' where '</span>;</span><br><span class="line">    <span class="keyword">let</span> queryArr = [];</span><br><span class="line">    queryKeys.forEach(<span class="function"><span class="params">key</span> =&gt;</span> &#123;</span><br><span class="line">      <span class="keyword">let</span> value = query[key];</span><br><span class="line">      <span class="keyword">switch</span> (<span class="keyword">typeof</span> value) &#123;</span><br><span class="line">        <span class="keyword">case</span> <span class="string">'object'</span>:</span><br><span class="line">          <span class="keyword">let</span> valueKeys = <span class="built_in">Object</span>.keys(value);</span><br><span class="line">          valueKeys.forEach(<span class="function"><span class="params">key2</span> =&gt;</span> &#123;</span><br><span class="line">            <span class="keyword">switch</span> (key2) &#123;</span><br><span class="line">              <span class="keyword">case</span> <span class="string">'$in'</span>:<span class="comment">//只对in处理其它的以此类推</span></span><br><span class="line">                <span class="keyword">let</span> arr = value[key2];</span><br><span class="line">                arr.forEach(<span class="function"><span class="params">index</span> =&gt;</span> &#123;</span><br><span class="line">                  <span class="keyword">if</span> (<span class="keyword">typeof</span> arr[index] === <span class="string">'string'</span>) &#123;</span><br><span class="line">                    arr[index] = <span class="keyword">this</span>.strChang(arr[index]);</span><br><span class="line">                  &#125;</span><br><span class="line">                &#125;);</span><br><span class="line">                queryArr.push(key + <span class="string">' in ('</span> + arr.join(<span class="string">','</span>) + <span class="string">')'</span>);</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">          &#125;);</span><br><span class="line">          <span class="keyword">break</span>;</span><br><span class="line">        <span class="keyword">default</span>:</span><br><span class="line">          value = <span class="keyword">this</span>.strChang(value);</span><br><span class="line">          queryArr.push(key + <span class="string">' = '</span> + value);</span><br><span class="line">          <span class="keyword">break</span>;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;);</span><br><span class="line">    querySql += queryArr.join(<span class="string">' and '</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">if</span> (!optSql) &#123;</span><br><span class="line">    optSql = <span class="string">''</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">else</span> &#123;</span><br><span class="line">    optSql = <span class="string">' '</span> + optSql;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">let</span> sql = <span class="string">'select '</span> + fieldSql + <span class="string">' from '</span> + tableName + <span class="string">' '</span> + querySql + optSql + <span class="string">';'</span>;</span><br><span class="line">  <span class="built_in">console</span>.log(<span class="string">'sql : '</span> + sql);</span><br><span class="line">  <span class="keyword">return</span> <span class="keyword">this</span>.query(sql, []);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>]]></content>
+      <tags>
+        <tag>mongodb</tag>
+        <tag>sql</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pomelo分布式部署注意</title>
+    <url>/2018/02/26/pomelo%E5%88%86%E5%B8%83%E5%BC%8F%E9%83%A8%E7%BD%B2%E6%B3%A8%E6%84%8F/</url>
+    <content><![CDATA[<p>官方wiki上式部署的说明：<br><a href="https://github.com/cynron/pomelo/wiki/Pomelo%E7%9A%84%E5%88%86%E5%B8%83%E5%BC%8F%E9%83%A8%E7%BD%B2%E6%96%B9%E6%B3%95">Pomelo的分布式部署方法</a><br>基本上wiki说得挺详细了，但是没提到中心服需要可以无密码登录到子服务器上，需要做下<strong>无密码登录</strong>才行。还有pomelo用户好像不创建也可以的(以root用户运行会比较不安全)。<br>如果分布式部署失败可以从中心服日志上看到ssh命令失败。</p>
+<p>失败检查：</p>
+<ol>
+<li>是否可以ssh登录到子服务器，不行的话无密码登录失败。</li>
+<li>如果可以登录检查两个路径:<ol>
+<li>项目路径不同服务器间是否一致。</li>
+<li>node命令路径是否一致，通过 which node 查看命令路径。</li>
+</ol>
+</li>
+</ol>
+]]></content>
+      <tags>
+        <tag>pomelo</tag>
+        <tag>分布式</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>JS获取调用栈信息</title>
+    <url>/2018/01/22/JS%E8%8E%B7%E5%8F%96%E8%B0%83%E7%94%A8%E6%A0%88%E4%BF%A1%E6%81%AF/</url>
+    <content><![CDATA[<p>由于JS的动态类型，相比Java等强类型开发工具难以支持方法在哪调用的查找。所以为了更清晰地看到代码调用流程有必要可以输出其调用栈日志。以下是获取第三层调用栈方法。</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> myObj = &#123;&#125;;</span><br><span class="line"><span class="built_in">Error</span>.captureStackTrace(myObj);</span><br><span class="line"><span class="keyword">var</span> str = <span class="built_in">String</span>(myObj.stack);</span><br><span class="line"><span class="keyword">var</span> arr = str.split(<span class="string">"\n"</span>);<span class="comment">//以换行为分割</span></span><br><span class="line"><span class="built_in">console</span>.log(arr[<span class="number">3</span>]);<span class="comment">//第三层调用调用栈存入帮助排查问题,[0]是"Error"从1开始</span></span><br></pre></td></tr></table></figure>
+<p>以上只是简单显示，可以做一个Log工具方法进行封装。一般显示两层调用栈，同时输出的日志可配合IDE点击跳转到对应位置。</p>
+]]></content>
+      <tags>
+        <tag>js</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>pomelo对服务进程内存中变量读写</title>
+    <url>/2018/01/05/pomelo%E5%AF%B9%E6%9C%8D%E5%8A%A1%E8%BF%9B%E7%A8%8B%E5%86%85%E5%AD%98%E4%B8%AD%E5%8F%98%E9%87%8F%E8%AF%BB%E5%86%99/</url>
+    <content><![CDATA[<h1 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h1><p>有时候我们需要对内存中的数据进行读写。比如以下场景:</p>
+<ul>
+<li>游戏逻辑变得复杂出现bug，单纯由log无法看出内存中用户数据的变化，需要直接读取内存数据分析。</li>
+<li>不影响线上玩家游戏体验，进行临时性的热更新。</li>
+</ul>
+<h1 id="实现"><a href="#实现" class="headerlink" title="实现"></a>实现</h1><p>需要对内存数据读写具体方法参照：<br><a href="https://github.com/NetEase/pomelo/wiki/pomelo-cli-exec%E5%91%BD%E4%BB%A4%E4%BD%BF%E7%94%A8">pomelo-cli-exec命令使用</a><br>可以同过app的set与get方法对游戏对象设置引用，比如我的用法：</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">app.get(<span class="string">"gameManager"</span>).playerEnterGame = <span class="function"><span class="keyword">function</span> (<span class="params"></span>) </span>&#123;<span class="comment">//这里app是服务进程的app对象，gameManager是在服务启动后设置下去的</span></span><br><span class="line"><span class="keyword">return</span> <span class="built_in">JSON</span>.stringify(<span class="keyword">this</span>.players);</span><br><span class="line">&#125;;</span><br><span class="line">result = app.get(<span class="string">"gameManager"</span>).playerEnterGame();<span class="comment">//这里的result 是对结果返回</span></span><br></pre></td></tr></table></figure>
+
+<p>以上是对gameManager对象的playerEnterGame方法进行更改。</p>
+]]></content>
+      <tags>
+        <tag>pomelo</tag>
+        <tag>内存读写</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>命令记录</title>
+    <url>/2017/12/20/%E5%91%BD%E4%BB%A4%E8%AE%B0%E5%BD%95/</url>
+    <content><![CDATA[<p>杀死所有带关键字的进程<br>ps x|grep “app.js client”|grep -v grep |awk ‘{print $1}’|xargs kill -9</p>
+<p>svn add 目录下所有文件<br>svn add . –no-ignore –force</p>
+<p>svn 关联移除<br>svn propdel -R svn:externals</p>
+]]></content>
+      <tags>
+        <tag>命令</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>JS实现对emoji表情替换</title>
+    <url>/2017/12/18/JS%E5%AE%9E%E7%8E%B0%E5%AF%B9emoji%E8%A1%A8%E6%83%85%E6%9B%BF%E6%8D%A2/</url>
+    <content><![CDATA[<p>由于客户端对微信昵称包含emoji表情json解析出错要求服务端去除，以下是去除方法：</p>
+<figure class="highlight js"><table><tr><td class="code"><pre><span class="line"><span class="keyword">var</span> a =<span class="string">",,🐶🐅"</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> ranges = [</span><br><span class="line">    <span class="string">'\ud83c[\udf00-\udfff]'</span>,</span><br><span class="line">    <span class="string">'\ud83d[\udc00-\ude4f]'</span>,</span><br><span class="line">    <span class="string">'\ud83d[\ude80-\udeff]'</span></span><br><span class="line">];</span><br><span class="line">a = a.replace(<span class="keyword">new</span> <span class="built_in">RegExp</span>(ranges.join(<span class="string">'|'</span>), <span class="string">'g'</span>), <span class="string">''</span>);</span><br><span class="line"><span class="built_in">console</span>.log(a);</span><br></pre></td></tr></table></figure>]]></content>
+      <tags>
+        <tag>js</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>js实现通过二分插入排序实现对用户排行榜性能的优化</title>
+    <url>/2017/12/08/js%E5%AE%9E%E7%8E%B0%E9%80%9A%E8%BF%87%E4%BA%8C%E5%88%86%E6%8F%92%E5%85%A5%E6%8E%92%E5%BA%8F%E5%AE%9E%E7%8E%B0%E5%AF%B9%E7%94%A8%E6%88%B7%E6%8E%92%E8%A1%8C%E6%A6%9C%E6%80%A7%E8%83%BD%E7%9A%84%E4%BC%98%E5%8C%96/</url>
+    <content><![CDATA[<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>在开发中排序实现排序最简单的方法就是直接用sort方法进行排序。但当在后面用户量达到万级后就发现调用排行榜排序运算耗时太长导致连接超时。</p>
+<h2 id="优化思路："><a href="#优化思路：" class="headerlink" title="优化思路："></a>优化思路：</h2><ol>
+<li>耗时运算放入另一个进程，同时隔一间隔更新排行榜。</li>
+<li>采用二分插入排序在原排序基础上进行部分排序。<br>显然直接用sort方法无法满足上述要求，需要自己手写排序算法了，下面是实现二分插入排序的插入的代码：<figure class="highlight js"><table><tr><td class="code"><pre><span class="line">rankManager.prototype.insertSort = <span class="function"><span class="keyword">function</span> (<span class="params">targetArr, compareFn, player, isInit, gameType, type, isResource</span>) </span>&#123;</span><br><span class="line">    <span class="keyword">var</span> delIndex;</span><br><span class="line">    <span class="keyword">if</span> (!isInit) &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="keyword">var</span> i <span class="keyword">in</span> targetArr) &#123;</span><br><span class="line">            <span class="keyword">if</span> (player.id === targetArr[i].id) &#123;</span><br><span class="line">                delIndex = i;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (delIndex) &#123;</span><br><span class="line">            targetArr.splice(delIndex, <span class="number">1</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">var</span> left = <span class="number">0</span>; <span class="comment">//最左边的数，从str[0]开始</span></span><br><span class="line">    <span class="keyword">var</span> right = targetArr.length; <span class="comment">//最右边位，所要插入那个数的前一位</span></span><br><span class="line">    <span class="keyword">var</span> mid = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">var</span> index;</span><br><span class="line">    <span class="keyword">while</span> (left &amp; lt; right) &#123;</span><br><span class="line">        <span class="keyword">if</span> (compareFn(gameType, type, targetArr[left], player, isResource) &amp; lt; <span class="number">0</span>) &#123; index = left; <span class="keyword">break</span>; &#125; <span class="keyword">if</span> (compareFn(gameType, type, targetArr[right - <span class="number">1</span>], player, isResource) &amp; gt; <span class="number">0</span>) &#123;</span><br><span class="line">            index = right;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        mid = <span class="built_in">parseInt</span>((left + right) / <span class="number">2</span>);</span><br><span class="line">        <span class="keyword">if</span> (mid === left || mid === right) &#123;</span><br><span class="line">            index = mid;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (compareFn(gameType, type, targetArr[mid], player, isResource) &amp; lt; <span class="number">0</span>) &#123; right = mid; &#125; <span class="keyword">else</span> &#123; left = mid; &#125;</span><br><span class="line">    &#125; targetArr.splice(index, <span class="number">0</span>, player); <span class="keyword">if</span> (targetArr.length &amp; gt; <span class="keyword">this</span>.rankNum) &#123;</span><br><span class="line">        targetArr.splice(targetArr.length - <span class="number">1</span>, <span class="number">1</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+这里需要维护targetArr这个在内存中的排行榜数组。服务器启动时对targetArr初始化排行，同时在每次用户数据更新都需要调用这个方法更新单个用户数据，这样就保证了降低运算量同时数据实时。</li>
+</ol>
+<p>最后为什么不用大名鼎鼎的快速排序，先看下快速排序的思想：</p>
+<ol>
+<li>先从数列中取出一个数作为基准数</li>
+<li>分区过程，将比这个数大的数全放到它的右边，小于或等于它的数全放到它的左边</li>
+<li>再对左右区间重复第二步，直到各区间只有一个数</li>
+</ol>
+<p>最后:用Redis的有序集合更容易实现不需要写排序算法。</p>
+<p>2018.9.4 更新<br><strong>部分排序的方法还是不行的，对于排名掉出的情况会出现最后一名补充运算复杂度是n*n的情况。为了运算量的稳定考虑还是全排名比较合理。100万数据量最多对比次数也只是20次。</strong></p>
+]]></content>
+      <tags>
+        <tag>js</tag>
+        <tag>算法</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>Hello World</title>
+    <url>/2017/05/12/hello-world/</url>
+    <content><![CDATA[<p>Welcome to <a href="https://hexo.io/">Hexo</a>! This is your very first post. Check <a href="https://hexo.io/docs/">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a href="https://hexo.io/docs/troubleshooting.html">troubleshooting</a> or you can ask me on <a href="https://github.com/hexojs/hexo/issues">GitHub</a>.</p>
+<h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">$ hexo new <span class="string">"My New Post"</span></span><br></pre></td></tr></table></figure>
+
+<p>More info: <a href="https://hexo.io/docs/writing.html">Writing</a></p>
+<h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">$ hexo server</span><br></pre></td></tr></table></figure>
+
+<p>More info: <a href="https://hexo.io/docs/server.html">Server</a></p>
+<h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">$ hexo generate</span><br></pre></td></tr></table></figure>
+
+<p>More info: <a href="https://hexo.io/docs/generating.html">Generating</a></p>
+<h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="code"><pre><span class="line">$ hexo deploy</span><br></pre></td></tr></table></figure>
+
+<p>More info: <a href="https://hexo.io/docs/one-command-deployment.html">Deployment</a></p>
+]]></content>
+  </entry>
+</search>
